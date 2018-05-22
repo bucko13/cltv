@@ -22,6 +22,7 @@
   },
   "homepage": "https://github.com/bucko13/cltv#readme",
   "dependencies": {
+    "bclient": "0.0.2",
     "bcoin": "github:bcoin-org/bcoin"
   }
 }
