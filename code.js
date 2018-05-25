@@ -9,9 +9,9 @@ const {
   ScriptNum,
   Stack
 } = require('bcoin');
-const { WalletClient, NodeClient } = require('bclient');
 const fs = require('fs');
 const assert = require('assert');
+const { WalletClient, NodeClient } = require('bclient');
 
 const network = Network.get('regtest');
 const apiKey = fs.readFileSync('./secrets.env');
@@ -22,6 +22,12 @@ const clientOptions = {
 const walletClient = new WalletClient({...clientOptions, port: network.walletPort});
 const nodeClient = new NodeClient({ ...clientOptions, port: network.rpcPort });
 
+/**
+ * @param {String} locktime - Time that the script can not
+ * be redeemed before
+ * @param {Buffer} public key hash
+ * @returns {Script}
+**/
 function createScript(locktime='100', publicKeyHash) {
   let pkh;
   if (typeof publicKeyHash === 'string')
@@ -62,7 +68,6 @@ function createScript(locktime='100', publicKeyHash) {
 function getAddress(script, network) {
   // get the hash of the script
   // and derive address from that
-  script.compile();
   const p2wsh = script.forWitness();
   const segwitAddress = p2wsh.getAddress().toBech32(network);
   return segwitAddress;
@@ -239,6 +244,8 @@ async function mockSolution() {
   console.log('Transaction verified!');
 }
 
+
+
 // Doing this with real money and the bcoin
 // wallet system isn't too much different
 // Key differences are:
@@ -248,12 +255,10 @@ async function mockSolution() {
 // of our transaction
 // 4) We will need to check against the real height of
 // a blockchain in order to redeem
-(async function() {
+async function lockAndRedeemCLTV(walletId) {
   try {
     const txInfoPath = './tx-info.json';
-    const walletId = 'applicant';
     const wallet = walletClient.wallet(walletId);
-    // mockSolution();
 
     // live solution
     let redeemScript, lockingAddr, locktime;
@@ -278,7 +283,6 @@ async function mockSolution() {
       locktime = height + 10;
       redeemScript = createScript(locktime.toString(), pkh);
       lockingAddr = getAddress(redeemScript, network);
-      keyring.script = redeemScript;
 
       // Step 3: use the wallet client to send funds to the locking address
       const output = {
@@ -292,8 +296,8 @@ async function mockSolution() {
       fs.writeFileSync(txInfoPath, JSON.stringify(txInfo, null, 2));
 
       // mine one block to get tx on chain
-      nodeClient.execute('generate', [1]);
-      console.log('Block mined');
+      const minedBlock = await nodeClient.execute('generate', [1]);
+      console.log('Block mined: ', minedBlock);
     } else {
       const {
         lockedTx,
@@ -321,7 +325,7 @@ async function mockSolution() {
       let mtx = new MTX();
       mtx.addCoin(coin);
 
-      const { address } = await walletClient.createAddress('tester', 'default');
+      const { address } = await walletClient.createAddress('secondary', 'default');
       // send to ourselves a value minus the fee
       mtx.addOutput(address, coin.value - 1500);
 
@@ -352,13 +356,16 @@ async function mockSolution() {
       // confirm the tx is in the mempool
       const txFromHash = await nodeClient.getTX(tx.rhash());
       assert(txFromHash, 'The tx does not appear to be in the mempool or chain');
-      console.log('Success!', tx);
+      console.log('Success!');
+      console.log('Tx: ', tx);
       fs.writeFileSync(txInfoPath, '');
     }
 
   } catch(e) {
     console.error('There was an error with live solution:', e);
   }
-})();
+};
 
+// mockSolution(); return;
+lockAndRedeemCLTV('witness');
 
